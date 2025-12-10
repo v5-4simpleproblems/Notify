@@ -247,13 +247,17 @@
                 const db = firebase.firestore();
                 const FieldValue = firebase.firestore.FieldValue; // Alias for brevity
 
+                function getNotifyCollectionRef(collectionName) {
+                    return db.collection('Notify_data').collection(collectionName);
+                }
+
                 auth.onAuthStateChanged(user => {
                     if (user) { currentUser = user; fetchUserData(user.uid); } 
                     else { window.location.href = 'login.html'; }
                 });
 
                 async function fetchUserData(uid) {
-                    const doc = await db.collection('users').doc(uid).get();
+                    const doc = await getNotifyCollectionRef('users').doc(uid).get();
                     if (doc.exists) {
                         userData = { uid, ...doc.data() };
                         updateProfileUI(currentUser, userData);
@@ -319,7 +323,7 @@
                                 const isOwner = data.teacherId === uid;
                                 const isCoTeacher = (data.teacherIds || []).includes(uid);
                                 if ((isOwner || isCoTeacher) && !queueUnsubscribers[`hands_${id}`]) {
-                                    queueUnsubscribers[`hands_${id}`] = db.collection('classes').doc(id).collection('raisedHands')
+                                    queueUnsubscribers[`hands_${id}`] = getNotifyCollectionRef('classes').doc(id).collection('raisedHands')
                                         .onSnapshot(qSnap => {
                                             classQueues[id] = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                                             updateGlobalUI();
@@ -328,7 +332,7 @@
                                 }
                                 if(isOwner && !queueUnsubscribers[`requests_${id}`]){
                                     // NEW: Listen to all, then filter 'pending' for count and 'recyclable' for reuse
-                                    queueUnsubscribers[`requests_${id}`] = db.collection('classes').doc(id).collection('coTeacherRequests')
+                                    queueUnsubscribers[`requests_${id}`] = getNotifyCollectionRef('classes').doc(id).collection('coTeacherRequests')
                                         .onSnapshot(rSnap => {
                                             classRequests[id] = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                                             updateGlobalUI();
@@ -339,9 +343,9 @@
                         });
                         updateGlobalUI();
                     };
-                    unsubscribes.push(db.collection('classes').where('teacherId', '==', uid).onSnapshot(process));
-                    unsubscribes.push(db.collection('classes').where('studentIds', 'array-contains', uid).onSnapshot(process));
-                    unsubscribes.push(db.collection('classes').where('teacherIds', 'array-contains', uid).onSnapshot(process));
+                    unsubscribes.push(getNotifyCollectionRef('classes').where('teacherId', '==', uid).onSnapshot(process));
+                    unsubscribes.push(getNotifyCollectionRef('classes').where('studentIds', 'array-contains', uid).onSnapshot(process));
+                    unsubscribes.push(getNotifyCollectionRef('classes').where('teacherIds', 'array-contains', uid).onSnapshot(process));
                 }
                 
                 function renderClassList(classes) {
@@ -374,7 +378,7 @@
                     if (id) {
                         await fetchRosterData(allLoadedClasses[id]);
                         // Setup listener for the class document itself (for settings/toggle changes)
-                        classDocUnsubscribe = db.collection('classes').doc(id).onSnapshot(docSnap => {
+                        classDocUnsubscribe = getNotifyCollectionRef('classes').doc(id).onSnapshot(docSnap => {
                             if(docSnap.exists) {
                                 allLoadedClasses[id] = {id, ...docSnap.data()};
                                 updateGlobalUI(); // Update list count if needed
@@ -401,7 +405,7 @@
 
                     const users = {};
                     for(const batch of userBatches){
-                        const docs = await db.collection('users').where(firebase.firestore.FieldPath.documentId(), 'in', batch).get();
+                        const docs = await getNotifyCollectionRef('users').where(firebase.firestore.FieldPath.documentId(), 'in', batch).get();
                         docs.forEach(doc => { users[doc.id] = doc.data(); });
                     }
 
@@ -500,10 +504,10 @@
                 function hideModal() { const d=modalContainer.firstElementChild; if(d){d.classList.add('fade-leave-to');modalBackdrop.classList.add('fade-leave-to');setTimeout(() => {modalContainer.innerHTML='';modalBackdrop.classList.add('hidden');modalBackdrop.classList.remove('fade-leave-to');}, 200);}}
                 function escapeHtml(text) { if(typeof text!=='string')return'';const d=document.createElement('div');d.textContent=text;return d.innerHTML; }
                 
-                async function createNewClass(name) { const code=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await db.collection('classes').add({name,teacherId:currentUser.uid,teacherIds:[],code,coTeacherCode,studentIds:[],pendingStudentEmails:[],handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''},createdAt:FieldValue.serverTimestamp()});hideModal();}
+                async function createNewClass(name) { const code=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await getNotifyCollectionRef('classes').add({name,teacherId:currentUser.uid,teacherIds:[],code,coTeacherCode,studentIds:[],pendingStudentEmails:[],handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''},createdAt:FieldValue.serverTimestamp()});hideModal();}
                 async function joinClass(code) {
-                    const studentQuery = db.collection('classes').where('code', '==', code).limit(1).get();
-                    const teacherQuery = db.collection('classes').where('coTeacherCode', '==', code).limit(1).get();
+                    const studentQuery = getNotifyCollectionRef('classes').where('code', '==', code).limit(1).get();
+                    const teacherQuery = getNotifyCollectionRef('classes').where('coTeacherCode', '==', code).limit(1).get();
                     const [studentSnap, teacherSnap] = await Promise.all([studentQuery, teacherQuery]);
                     
                     if (teacherSnap.empty && studentSnap.empty) { showModal(TPL.messageModal('Error','Invalid class code.','red')); return; }
@@ -536,7 +540,7 @@
                         }
                         
                         // Any user type can join as a student with the student code
-                        await db.collection('classes').doc(classDoc.id).update({studentIds:FieldValue.arrayUnion(currentUser.uid)});
+                        await getNotifyCollectionRef('classes').doc(classDoc.id).update({studentIds:FieldValue.arrayUnion(currentUser.uid)});
                         hideModal();
                         showModal(TPL.messageModal('Success',`Successfully joined class: ${classData.name} as a student!`,'green'));
                     }
@@ -544,7 +548,7 @@
 
                 // NEW: Logic to find a recyclable request slot
                 async function findRecyclableRequestSlot(classId) {
-                    const recyclableSnap = await db.collection('classes').doc(classId).collection('coTeacherRequests')
+                    const recyclableSnap = await getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests')
                         .where('status', '==', 'recyclable')
                         .limit(1)
                         .get();
@@ -568,14 +572,14 @@
                         requesterId: currentUser.uid // Store actual requester ID
                     };
 
-                    await db.collection('classes').doc(classId).collection('coTeacherRequests').doc(docId).set(requestData);
+                    await getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests').doc(docId).set(requestData);
                     hideModal();
                     showModal(TPL.messageModal('Request Sent', 'Your request to join as a co-teacher has been sent to the class owner.', 'green'));
                 }
 
                 // UPDATED: handleCoTeacherRequest to use full fields
                 async function handleCoTeacherRequest(classId, requestDocId, action) {
-                    const requestRef = db.collection('classes').doc(classId).collection('coTeacherRequests').doc(requestDocId);
+                    const requestRef = getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests').doc(requestDocId);
                     
                     const requestDoc = await requestRef.get();
                     if (!requestDoc.exists) return; // Should not happen
@@ -583,7 +587,7 @@
                     const requesterId = requestDoc.data().requesterId; // Get the actual requester ID
 
                     if(action === 'accept'){
-                        await db.collection('classes').doc(classId).update({ teacherIds: FieldValue.arrayUnion(requesterId) });
+                        await getNotifyCollectionRef('classes').doc(classId).update({ teacherIds: FieldValue.arrayUnion(requesterId) });
                         await requestRef.update({ status: 'accepted' });
                     } else if (action === 'deny') {
                         await requestRef.update({ status: 'denied' });
@@ -596,9 +600,9 @@
                     renderMainContent(); 
                 }
                 
-                async function raiseHand(id,q){await db.collection('classes').doc(id).collection('raisedHands').doc(currentUser.uid).set({studentName:userData.username,studentPhotoURL:currentUser.photoURL||'',question:q||'',raisedAt:FieldValue.serverTimestamp()});hideModal();}
-                async function lowerHand(id,studentId=currentUser.uid){await db.collection('classes').doc(id).collection('raisedHands').doc(studentId).delete();}
-                async function lowerAllHands(id){const s=await db.collection('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));await b.commit();}
+                async function raiseHand(id,q){await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').doc(currentUser.uid).set({studentName:userData.username,studentPhotoURL:currentUser.photoURL||'',question:q||'',raisedAt:FieldValue.serverTimestamp()});hideModal();}
+                async function lowerHand(id,studentId=currentUser.uid){await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').doc(studentId).delete();}
+                async function lowerAllHands(id){const s=await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));await b.commit();}
                 
                 // FIXED: toggleHandRaising to include immediate UI update
                 async function toggleHandRaising(id, status, buttonEl) {
@@ -623,15 +627,15 @@
                         }
                     }
                     // DB update
-                    await db.collection('classes').doc(id).update({ handRaisingEnabled: !status });
+                    await getNotifyCollectionRef('classes').doc(id).update({ handRaisingEnabled: !status });
                     // onSnapshot listener will handle the full re-render and UI changes eventually.
                 }
                 
-                async function handleChangeClassName(id,name){await db.collection('classes').doc(id).update({name});showModal(TPL.messageModal('Success','Class name updated!','green'));}
+                async function handleChangeClassName(id,name){await getNotifyCollectionRef('classes').doc(id).update({name});showModal(TPL.messageModal('Success','Class name updated!','green'));}
                 
                 // FIXED: handleSaveSchedule now takes 24-hour time strings directly from the template logic
                 async function handleSaveSchedule(id,enable,disable){
-                    await db.collection('classes').doc(id).update({
+                    await getNotifyCollectionRef('classes').doc(id).update({
                         schedule:{enableAt:enable,disableAt:disable},
                         scheduleLastActionDate: ''
                     });
@@ -640,7 +644,7 @@
 
                 // FIXED: deleteSchedule now clears input boxes
                 async function deleteSchedule(id) { 
-                    await db.collection('classes').doc(id).update({ 'schedule.enableAt': '', 'schedule.disableAt': '' }); 
+                    await getNotifyCollectionRef('classes').doc(id).update({ 'schedule.enableAt': '', 'schedule.disableAt': '' }); 
                     
                     // NEW: Clear the text boxes
                     const enableInput = document.getElementById('enable-time-input');
@@ -664,8 +668,8 @@
 
                     showModal(TPL.messageModal('Success', 'Schedule has been removed.', 'green')); 
                 }
-                async function removeUserFromClass(id, userId) { const data = allLoadedClasses[id]; if ((data.teacherIds || []).includes(userId)) { await db.collection('classes').doc(id).update({ teacherIds: FieldValue.arrayRemove(userId) }); } else if ((data.studentIds || []).includes(userId)) { await db.collection('classes').doc(id).update({ studentIds: FieldValue.arrayRemove(userId) }); } await fetchRosterData(allLoadedClasses[id]); renderMainContent(); }
-                async function handleDeleteClass(id){const s=await db.collection('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));b.delete(db.collection('classes').doc(id));await b.commit();hideModal();selectClass(null);}
+                async function removeUserFromClass(id, userId) { const data = allLoadedClasses[id]; if ((data.teacherIds || []).includes(userId)) { await getNotifyCollectionRef('classes').doc(id).update({ teacherIds: FieldValue.arrayRemove(userId) }); } else if ((data.studentIds || []).includes(userId)) { await db.collection('classes').doc(id).update({ studentIds: FieldValue.arrayRemove(userId) }); } await fetchRosterData(allLoadedClasses[id]); renderMainContent(); }
+                async function handleDeleteClass(id){const s=await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));b.delete(getNotifyCollectionRef('classes').doc(id));await b.commit();hideModal();selectClass(null);}
 
                 let scheduleInterval = null;
                 function initializeScheduleChecker() {
@@ -688,7 +692,7 @@
                                     if (!effectiveStatus.enabled && !effectiveStatus.override && cls.handRaisingEnabled && cls.scheduleLastActionDate !== todayStr) {
                                         console.log(`Auto-disabling for ${cls.name} due to schedule end.`);
                                         // Set the DB to disabled and record the date to prevent further action today
-                                        db.collection('classes').doc(classId).update({ scheduleLastActionDate: todayStr, handRaisingEnabled: false });
+                                        getNotifyCollectionRef('classes').doc(classId).update({ scheduleLastActionDate: todayStr, handRaisingEnabled: false });
                                         lowerAllHands(classId); // Lower hands when auto-disabling
                                     }
                                 }
@@ -716,7 +720,7 @@
                 }
 
                 async function recycleOldRequests(classId, cutoffDate) {
-                    const oldRequestsSnap = await db.collection('classes').doc(classId).collection('coTeacherRequests')
+                    const oldRequestsSnap = await getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests')
                         .where('status', 'in', ['accepted', 'denied']) // Only recycle closed requests
                         .get();
 
@@ -817,7 +821,7 @@
                     errorEl.classList.add('hidden');
                     
                     try{
-                        const secretsDoc=await db.collection('secrets').doc('wUTBTbjuNLueOFhgHXEE').get();
+                        const secretsDoc=await getNotifyCollectionRef('secrets').doc('wUTBTbjuNLueOFhgHXEE').get();
                         if(!secretsDoc.exists)throw new Error("Secrets document not found.");
                         const{GoogleClassroomAPIKey:apiKey,GoogleClientID:clientId}=secretsDoc.data();
                         if(!apiKey||!clientId)throw new Error("Missing API Key or Client ID in secrets document.");
@@ -841,7 +845,7 @@
                         const response=await gapi.client.classroom.courses.list({teacherId:'me',courseStates:'ACTIVE'});
                         loadingEl.classList.add('hidden');
                         const courses=response.result.courses||[];
-                        const notifyClassesSnapshot=await db.collection('classes').where('teacherId','==',currentUser.uid).get();
+                        const notifyClassesSnapshot=await getNotifyCollectionRef('classes').where('teacherId','==',currentUser.uid).get();
                         const existingGoogleIds=new Set();
                         notifyClassesSnapshot.forEach(doc=>{const data=doc.data();if(data.googleCourseId)existingGoogleIds.add(data.googleCourseId);});
                         if(courses.length>0){
@@ -863,7 +867,7 @@
                         errorEl.classList.remove('hidden');
                     }
                 }
-                async function importGoogleClass(googleCourseId,googleCourseName){const importBtn=document.querySelector(`.import-g-class-btn[data-course-id="${googleCourseId}"]`);if(importBtn){importBtn.textContent='Importing...';importBtn.disabled=true;}try{const existingClass=await db.collection('classes').where('googleCourseId','==',googleCourseId).limit(1).get();if(!existingClass.empty){showModal(TPL.messageModal('Duplicate','This class has already been imported.','yellow'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}return;}const studentsResponse=await gapi.client.classroom.courses.students.list({courseId:googleCourseId});const students=studentsResponse.result.students||[];const studentEmails=students.map(s=>s.profile?.emailAddress).filter(Boolean);const existingStudentUids=[];const pendingEmails=[];if(studentEmails.length>0){const batchSize=10;for(let i=0;i<studentEmails.length;i+=batchSize){const batchEmails=studentEmails.slice(i,i+batchSize);const usersSnapshot=await db.collection('users').where('email','in',batchEmails).get();const existingEmailsBatch=new Set();usersSnapshot.forEach(doc=>{existingStudentUids.push(doc.id);existingEmailsBatch.add(doc.data().email);});batchEmails.forEach(email=>{if(!existingEmailsBatch.has(email)){pendingEmails.push(email);}});}}const classCode=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await db.collection('classes').add({name:googleCourseName,teacherId:currentUser.uid,teacherIds:[],code:classCode,coTeacherCode,googleCourseId:googleCourseId,studentIds:existingStudentUids,pendingStudentEmails:pendingEmails,createdAt:FieldValue.serverTimestamp(),handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''}, scheduleLastActionDate:''});hideModal();showModal(TPL.messageModal('Import Successful',`Class "${googleCourseName}" has been imported with ${existingStudentUids.length} existing students and ${pendingEmails.length} pending emails!`,'green'));}catch(e){console.error("Error importing Google Classroom:",e);let errorMessage='Failed to import class. Please ensure Google Classroom API is enabled for your account.';if(e.result&&e.result.error){errorMessage=e.result.error.message||errorMessage;}else if(e.message){errorMessage=e.message;}showModal(TPL.messageModal('Import Failed',errorMessage,'red'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}}}
+                async function importGoogleClass(googleCourseId,googleCourseName){const importBtn=document.querySelector(`.import-g-class-btn[data-course-id="${googleCourseId}"]`);if(importBtn){importBtn.textContent='Importing...';importBtn.disabled=true;}try{const existingClass=await getNotifyCollectionRef('classes').where('googleCourseId','==',googleCourseId).limit(1).get();if(!existingClass.empty){showModal(TPL.messageModal('Duplicate','This class has already been imported.','yellow'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}return;}const studentsResponse=await gapi.client.classroom.courses.students.list({courseId:googleCourseId});const students=studentsResponse.result.students||[];const studentEmails=students.map(s=>s.profile?.emailAddress).filter(Boolean);const existingStudentUids=[];const pendingEmails=[];if(studentEmails.length>0){const batchSize=10;for(let i=0;i<studentEmails.length;i+=batchSize){const batchEmails=studentEmails.slice(i,i+batchSize);    const usersSnapshot=await getNotifyCollectionRef('users').where('email','in',batchEmails).get();const existingEmailsBatch=new Set();usersSnapshot.forEach(doc=>{existingStudentUids.push(doc.id);existingEmailsBatch.add(doc.data().email);});batchEmails.forEach(email=>{if(!existingEmailsBatch.has(email)){pendingEmails.push(email);}});}}const classCode=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await getNotifyCollectionRef('classes').add({name:googleCourseName,teacherId:currentUser.uid,teacherIds:[],code:classCode,coTeacherCode,googleCourseId:googleCourseId,studentIds:existingStudentUids,pendingStudentEmails:pendingEmails,createdAt:FieldValue.serverTimestamp(),handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''}, scheduleLastActionDate:''});hideModal();showModal(TPL.messageModal('Import Successful',`Class "${googleCourseName}" has been imported with ${existingStudentUids.length} existing students and ${pendingEmails.length} pending emails!`,'green'));}catch(e){console.error("Error importing Google Classroom:",e);let errorMessage='Failed to import class. Please ensure Google Classroom API is enabled for your account.';if(e.result&&e.result.error){errorMessage=e.result.error.message||errorMessage;}else if(e.message){errorMessage=e.message;}showModal(TPL.messageModal('Import Failed',errorMessage,'red'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}}}
 
                 document.body.addEventListener('click', async e => {
                     const target = e.target.closest('button, a, [role="button"]');

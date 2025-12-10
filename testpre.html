@@ -62,8 +62,9 @@
         .fade-enter-active, .fade-leave-active { transition: opacity 200ms ease-out, transform 200ms ease-out; }
         .fade-enter-to, .fade-leave-from { opacity: 1; transform: scale(1); }
         
-        .btn-bubbly { transition: transform 0.1s ease-out; }
-        .btn-bubbly:active { transform: scale(0.95); }
+        .btn-bubbly { transition: all 0.15s ease-out; }
+        .btn-bubbly:hover { transform: scale(1.02); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1); }
+        .btn-bubbly:active { transform: scale(0.98); box-shadow: none; }
 
         .user-profile-menu-container { transition: transform 0.2s ease-out, opacity 0.2s ease-out; transform-origin: top right; }
         .menu-item-icon { display: inline-flex; width: 1.25rem; height: 1.25rem; margin-right: 0.75rem; align-items: center; justify-content: center; }
@@ -143,6 +144,18 @@
         .request-pulse {
             animation: pulse-border 2s infinite;
         }
+
+        /* Modal specific styles */
+        #modal-backdrop {
+            backdrop-filter: blur(5px); /* Frosted glass effect */
+            -webkit-backdrop-filter: blur(5px); /* Safari support */
+        }
+
+        #modal-container .relative {
+            border-radius: 1.5rem; /* More rounded corners for modals */
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); /* Deeper shadow */
+        }
+    </style>
     </style>
 </head>
 <body class="bg-slate-100 h-screen overflow-hidden">
@@ -234,13 +247,17 @@
                 const db = firebase.firestore();
                 const FieldValue = firebase.firestore.FieldValue; // Alias for brevity
 
+                function getNotifyCollectionRef(collectionName) {
+                    return db.collection('Notify_data').collection(collectionName);
+                }
+
                 auth.onAuthStateChanged(user => {
                     if (user) { currentUser = user; fetchUserData(user.uid); } 
                     else { window.location.href = 'login.html'; }
                 });
 
                 async function fetchUserData(uid) {
-                    const doc = await db.collection('users').doc(uid).get();
+                    const doc = await getNotifyCollectionRef('users').doc(uid).get();
                     if (doc.exists) {
                         userData = { uid, ...doc.data() };
                         updateProfileUI(currentUser, userData);
@@ -306,7 +323,7 @@
                                 const isOwner = data.teacherId === uid;
                                 const isCoTeacher = (data.teacherIds || []).includes(uid);
                                 if ((isOwner || isCoTeacher) && !queueUnsubscribers[`hands_${id}`]) {
-                                    queueUnsubscribers[`hands_${id}`] = db.collection('classes').doc(id).collection('raisedHands')
+                                    queueUnsubscribers[`hands_${id}`] = getNotifyCollectionRef('classes').doc(id).collection('raisedHands')
                                         .onSnapshot(qSnap => {
                                             classQueues[id] = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                                             updateGlobalUI();
@@ -315,7 +332,7 @@
                                 }
                                 if(isOwner && !queueUnsubscribers[`requests_${id}`]){
                                     // NEW: Listen to all, then filter 'pending' for count and 'recyclable' for reuse
-                                    queueUnsubscribers[`requests_${id}`] = db.collection('classes').doc(id).collection('coTeacherRequests')
+                                    queueUnsubscribers[`requests_${id}`] = getNotifyCollectionRef('classes').doc(id).collection('coTeacherRequests')
                                         .onSnapshot(rSnap => {
                                             classRequests[id] = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                                             updateGlobalUI();
@@ -326,9 +343,9 @@
                         });
                         updateGlobalUI();
                     };
-                    unsubscribes.push(db.collection('classes').where('teacherId', '==', uid).onSnapshot(process));
-                    unsubscribes.push(db.collection('classes').where('studentIds', 'array-contains', uid).onSnapshot(process));
-                    unsubscribes.push(db.collection('classes').where('teacherIds', 'array-contains', uid).onSnapshot(process));
+                    unsubscribes.push(getNotifyCollectionRef('classes').where('teacherId', '==', uid).onSnapshot(process));
+                    unsubscribes.push(getNotifyCollectionRef('classes').where('studentIds', 'array-contains', uid).onSnapshot(process));
+                    unsubscribes.push(getNotifyCollectionRef('classes').where('teacherIds', 'array-contains', uid).onSnapshot(process));
                 }
                 
                 function renderClassList(classes) {
@@ -370,7 +387,7 @@
 
                     const users = {};
                     for(const batch of userBatches){
-                        const docs = await db.collection('users').where(firebase.firestore.FieldPath.documentId(), 'in', batch).get();
+                        const docs = await getNotifyCollectionRef('users').where(firebase.firestore.FieldPath.documentId(), 'in', batch).get();
                         docs.forEach(doc => { users[doc.id] = doc.data(); });
                     }
 
@@ -469,10 +486,10 @@
                 function hideModal() { const d=modalContainer.firstElementChild; if(d){d.classList.add('fade-leave-to');modalBackdrop.classList.add('fade-leave-to');setTimeout(() => {modalContainer.innerHTML='';modalBackdrop.classList.add('hidden');modalBackdrop.classList.remove('fade-leave-to');}, 200);}}
                 function escapeHtml(text) { if(typeof text!=='string')return'';const d=document.createElement('div');d.textContent=text;return d.innerHTML; }
                 
-                async function createNewClass(name) { const code=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await db.collection('classes').add({name,teacherId:currentUser.uid,teacherIds:[],code,coTeacherCode,studentIds:[],pendingStudentEmails:[],handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''},createdAt:FieldValue.serverTimestamp()});hideModal();}
+                async function createNewClass(name) { const code=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await getNotifyCollectionRef('classes').add({name,teacherId:currentUser.uid,teacherIds:[],code,coTeacherCode,studentIds:[],pendingStudentEmails:[],handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''},createdAt:FieldValue.serverTimestamp()});hideModal();}
                 async function joinClass(code) {
-                    const studentQuery = db.collection('classes').where('code', '==', code).limit(1).get();
-                    const teacherQuery = db.collection('classes').where('coTeacherCode', '==', code).limit(1).get();
+                    const studentQuery = getNotifyCollectionRef('classes').where('code', '==', code).limit(1).get();
+                    const teacherQuery = getNotifyCollectionRef('classes').where('coTeacherCode', '==', code).limit(1).get();
                     const [studentSnap, teacherSnap] = await Promise.all([studentQuery, teacherQuery]);
                     
                     if (teacherSnap.empty && studentSnap.empty) { showModal(TPL.messageModal('Error','Invalid class code.','red')); return; }
@@ -505,7 +522,7 @@
                         }
                         
                         // Any user type can join as a student with the student code
-                        await db.collection('classes').doc(classDoc.id).update({studentIds:FieldValue.arrayUnion(currentUser.uid)});
+                        await getNotifyCollectionRef('classes').doc(classDoc.id).update({studentIds:FieldValue.arrayUnion(currentUser.uid)});
                         hideModal();
                         showModal(TPL.messageModal('Success',`Successfully joined class: ${classData.name} as a student!`,'green'));
                     }
@@ -513,7 +530,7 @@
 
                 // NEW: Logic to find a recyclable request slot
                 async function findRecyclableRequestSlot(classId) {
-                    const recyclableSnap = await db.collection('classes').doc(classId).collection('coTeacherRequests')
+                    const recyclableSnap = await getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests')
                         .where('status', '==', 'recyclable')
                         .limit(1)
                         .get();
@@ -537,14 +554,14 @@
                         requesterId: currentUser.uid // Store actual requester ID
                     };
 
-                    await db.collection('classes').doc(classId).collection('coTeacherRequests').doc(docId).set(requestData);
+                    await getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests').doc(docId).set(requestData);
                     hideModal();
                     showModal(TPL.messageModal('Request Sent', 'Your request to join as a co-teacher has been sent to the class owner.', 'green'));
                 }
 
                 // UPDATED: handleCoTeacherRequest to use full fields
                 async function handleCoTeacherRequest(classId, requestDocId, action) {
-                    const requestRef = db.collection('classes').doc(classId).collection('coTeacherRequests').doc(requestDocId);
+                    const requestRef = getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests').doc(requestDocId);
                     
                     const requestDoc = await requestRef.get();
                     if (!requestDoc.exists) return; // Should not happen
@@ -552,7 +569,7 @@
                     const requesterId = requestDoc.data().requesterId; // Get the actual requester ID
 
                     if(action === 'accept'){
-                        await db.collection('classes').doc(classId).update({ teacherIds: FieldValue.arrayUnion(requesterId) });
+                        await getNotifyCollectionRef('classes').doc(classId).update({ teacherIds: FieldValue.arrayUnion(requesterId) });
                         await requestRef.update({ status: 'accepted' });
                     } else if (action === 'deny') {
                         await requestRef.update({ status: 'denied' });
@@ -565,9 +582,9 @@
                     renderMainContent(); 
                 }
                 
-                async function raiseHand(id,q){await db.collection('classes').doc(id).collection('raisedHands').doc(currentUser.uid).set({studentName:userData.username,studentPhotoURL:currentUser.photoURL||'',question:q||'',raisedAt:FieldValue.serverTimestamp()});hideModal();}
-                async function lowerHand(id,studentId=currentUser.uid){await db.collection('classes').doc(id).collection('raisedHands').doc(studentId).delete();}
-                async function lowerAllHands(id){const s=await db.collection('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));await b.commit();}
+                async function raiseHand(id,q){await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').doc(currentUser.uid).set({studentName:userData.username,studentPhotoURL:currentUser.photoURL||'',question:q||'',raisedAt:FieldValue.serverTimestamp()});hideModal();}
+                async function lowerHand(id,studentId=currentUser.uid){await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').doc(studentId).delete();}
+                async function lowerAllHands(id){const s=await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));await b.commit();}
                 
                 // FIXED: toggleHandRaising to include immediate UI update
                 async function toggleHandRaising(id, status, buttonEl) {
@@ -592,15 +609,15 @@
                         }
                     }
                     // DB update
-                    await db.collection('classes').doc(id).update({ handRaisingEnabled: !status });
+                    await getNotifyCollectionRef('classes').doc(id).update({ handRaisingEnabled: !status });
                     // onSnapshot listener will handle the full re-render and UI changes eventually.
                 }
                 
-                async function handleChangeClassName(id,name){const today=new Date().toISOString().split('T')[0];const key=`classNameChanges_${id}`;let changes;try{changes=JSON.parse(localStorage.getItem(key))||{};}catch(e){changes={};}if(changes.date!==today){changes={date:today,count:0};}if(changes.count>=3){showModal(TPL.messageModal('Limit Reached','You can only change the class name 3 times per day.','red'));return;}await db.collection('classes').doc(id).update({name});changes.count++;localStorage.setItem(key,JSON.stringify(changes));showModal(TPL.messageModal('Success','Class name updated!','green'));}
+                async function handleChangeClassName(id,name){const today=new Date().toISOString().split('T')[0];const key=`classNameChanges_${id}`;let changes;try{changes=JSON.parse(localStorage.getItem(key))||{};}catch(e){changes={};}if(changes.date!==today){changes={date:today,count:0};}if(changes.count>=3){showModal(TPL.messageModal('Limit Reached','You can only change the class name 3 times per day.','red'));return;}await getNotifyCollectionRef('classes').doc(id).update({name});changes.count++;localStorage.setItem(key,JSON.stringify(changes));showModal(TPL.messageModal('Success','Class name updated!','green'));}
                 
                 // FIXED: handleSaveSchedule now takes 24-hour time strings directly from the template logic
                 async function handleSaveSchedule(id,enable,disable){
-                    await db.collection('classes').doc(id).update({
+                    await getNotifyCollectionRef('classes').doc(id).update({
                         schedule:{enableAt:enable,disableAt:disable},
                         scheduleLastActionDate: ''
                     });
@@ -609,7 +626,7 @@
 
                 // FIXED: deleteSchedule now clears input boxes
                 async function deleteSchedule(id) { 
-                    await db.collection('classes').doc(id).update({ 'schedule.enableAt': '', 'schedule.disableAt': '' }); 
+                    await getNotifyCollectionRef('classes').doc(id).update({ 'schedule.enableAt': '', 'schedule.disableAt': '' }); 
                     
                     // NEW: Clear the text boxes
                     const enableInput = document.getElementById('enable-time-input');
@@ -633,8 +650,8 @@
 
                     showModal(TPL.messageModal('Success', 'Schedule has been removed.', 'green')); 
                 }
-                async function removeUserFromClass(id, userId) { const data = allLoadedClasses[id]; if ((data.teacherIds || []).includes(userId)) { await db.collection('classes').doc(id).update({ teacherIds: FieldValue.arrayRemove(userId) }); } else if ((data.studentIds || []).includes(userId)) { await db.collection('classes').doc(id).update({ studentIds: FieldValue.arrayRemove(userId) }); } await fetchRosterData(allLoadedClasses[id]); renderMainContent(); }
-                async function handleDeleteClass(id){const s=await db.collection('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));b.delete(db.collection('classes').doc(id));await b.commit();hideModal();selectClass(null);}
+                async function removeUserFromClass(id, userId) { const data = allLoadedClasses[id]; if ((data.teacherIds || []).includes(userId)) { await getNotifyCollectionRef('classes').doc(id).update({ teacherIds: FieldValue.arrayRemove(userId) }); } else if ((data.studentIds || []).includes(userId)) { await db.collection('classes').doc(id).update({ studentIds: FieldValue.arrayRemove(userId) }); } await fetchRosterData(allLoadedClasses[id]); renderMainContent(); }
+                async function handleDeleteClass(id){const s=await getNotifyCollectionRef('classes').doc(id).collection('raisedHands').get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));b.delete(getNotifyCollectionRef('classes').doc(id));await b.commit();hideModal();selectClass(null);}
 
                 let scheduleInterval = null;
                 function initializeScheduleChecker() {
@@ -657,7 +674,7 @@
                                     if (!effectiveStatus.enabled && !effectiveStatus.override && cls.handRaisingEnabled && cls.scheduleLastActionDate !== todayStr) {
                                         console.log(`Auto-disabling for ${cls.name} due to schedule end.`);
                                         // Set the DB to disabled and record the date to prevent further action today
-                                        db.collection('classes').doc(classId).update({ scheduleLastActionDate: todayStr, handRaisingEnabled: false });
+                                        getNotifyCollectionRef('classes').doc(classId).update({ scheduleLastActionDate: todayStr, handRaisingEnabled: false });
                                         lowerAllHands(classId); // Lower hands when auto-disabling
                                     }
                                 }
@@ -685,7 +702,7 @@
                 }
 
                 async function recycleOldRequests(classId, cutoffDate) {
-                    const oldRequestsSnap = await db.collection('classes').doc(classId).collection('coTeacherRequests')
+                    const oldRequestsSnap = await getNotifyCollectionRef('classes').doc(classId).collection('coTeacherRequests')
                         .where('status', 'in', ['accepted', 'denied']) // Only recycle closed requests
                         .get();
 
@@ -786,7 +803,7 @@
                     errorEl.classList.add('hidden');
                     
                     try{
-                        const secretsDoc=await db.collection('secrets').doc('wUTBTbjuNLueOFhgHXEE').get();
+                        const secretsDoc=await getNotifyCollectionRef('secrets').doc('wUTBTbjuNLueOFhgHXEE').get();
                         if(!secretsDoc.exists)throw new Error("Secrets document not found.");
                         const{GoogleClassroomAPIKey:apiKey,GoogleClientID:clientId}=secretsDoc.data();
                         if(!apiKey||!clientId)throw new Error("Missing API Key or Client ID in secrets document.");
@@ -810,7 +827,7 @@
                         const response=await gapi.client.classroom.courses.list({teacherId:'me',courseStates:'ACTIVE'});
                         loadingEl.classList.add('hidden');
                         const courses=response.result.courses||[];
-                        const notifyClassesSnapshot=await db.collection('classes').where('teacherId','==',currentUser.uid).get();
+                        const notifyClassesSnapshot=await getNotifyCollectionRef('classes').where('teacherId','==',currentUser.uid).get();
                         const existingGoogleIds=new Set();
                         notifyClassesSnapshot.forEach(doc=>{const data=doc.data();if(data.googleCourseId)existingGoogleIds.add(data.googleCourseId);});
                         if(courses.length>0){
@@ -832,7 +849,7 @@
                         errorEl.classList.remove('hidden');
                     }
                 }
-                async function importGoogleClass(googleCourseId,googleCourseName){const importBtn=document.querySelector(`.import-g-class-btn[data-course-id="${googleCourseId}"]`);if(importBtn){importBtn.textContent='Importing...';importBtn.disabled=true;}try{const existingClass=await db.collection('classes').where('googleCourseId','==',googleCourseId).limit(1).get();if(!existingClass.empty){showModal(TPL.messageModal('Duplicate','This class has already been imported.','yellow'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}return;}const studentsResponse=await gapi.client.classroom.courses.students.list({courseId:googleCourseId});const students=studentsResponse.result.students||[];const studentEmails=students.map(s=>s.profile?.emailAddress).filter(Boolean);const existingStudentUids=[];const pendingEmails=[];if(studentEmails.length>0){const batchSize=10;for(let i=0;i<studentEmails.length;i+=batchSize){const batchEmails=studentEmails.slice(i,i+batchSize);const usersSnapshot=await db.collection('users').where('email','in',batchEmails).get();const existingEmailsBatch=new Set();usersSnapshot.forEach(doc=>{existingStudentUids.push(doc.id);existingEmailsBatch.add(doc.data().email);});batchEmails.forEach(email=>{if(!existingEmailsBatch.has(email)){pendingEmails.push(email);}});}}const classCode=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await db.collection('classes').add({name:googleCourseName,teacherId:currentUser.uid,teacherIds:[],code:classCode,coTeacherCode,googleCourseId:googleCourseId,studentIds:existingStudentUids,pendingStudentEmails:pendingEmails,createdAt:FieldValue.serverTimestamp(),handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''}, scheduleLastActionDate:''});hideModal();showModal(TPL.messageModal('Import Successful',`Class "${googleCourseName}" has been imported with ${existingStudentUids.length} existing students and ${pendingEmails.length} pending emails!`,'green'));}catch(e){console.error("Error importing Google Classroom:",e);let errorMessage='Failed to import class. Please ensure Google Classroom API is enabled for your account.';if(e.result&&e.result.error){errorMessage=e.result.error.message||errorMessage;}else if(e.message){errorMessage=e.message;}showModal(TPL.messageModal('Import Failed',errorMessage,'red'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}}}
+                async function importGoogleClass(googleCourseId,googleCourseName){const importBtn=document.querySelector(`.import-g-class-btn[data-course-id="${googleCourseId}"]`);if(importBtn){importBtn.textContent='Importing...';importBtn.disabled=true;}try{const existingClass=await getNotifyCollectionRef('classes').where('googleCourseId','==',googleCourseId).limit(1).get();if(!existingClass.empty){showModal(TPL.messageModal('Duplicate','This class has already been imported.','yellow'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}return;}const studentsResponse=await gapi.client.classroom.courses.students.list({courseId:googleCourseId});const students=studentsResponse.result.students||[];const studentEmails=students.map(s=>s.profile?.emailAddress).filter(Boolean);const existingStudentUids=[];const pendingEmails=[];if(studentEmails.length>0){const batchSize=10;for(let i=0;i<studentEmails.length;i+=batchSize){const batchEmails=studentEmails.slice(i,i+batchSize);    const usersSnapshot=await getNotifyCollectionRef('users').where('email','in',batchEmails).get();const existingEmailsBatch=new Set();usersSnapshot.forEach(doc=>{existingStudentUids.push(doc.id);existingEmailsBatch.add(doc.data().email);});batchEmails.forEach(email=>{if(!existingEmailsBatch.has(email)){pendingEmails.push(email);}});}}const classCode=Math.random().toString(36).substring(2,10).toUpperCase(); const coTeacherCode = 'T' + Math.random().toString(36).substring(2,9).toUpperCase(); await getNotifyCollectionRef('classes').add({name:googleCourseName,teacherId:currentUser.uid,teacherIds:[],code:classCode,coTeacherCode,googleCourseId:googleCourseId,studentIds:existingStudentUids,pendingStudentEmails:pendingEmails,createdAt:FieldValue.serverTimestamp(),handRaisingEnabled:true,schedule:{enableAt:'',disableAt:''}, scheduleLastActionDate:''});hideModal();showModal(TPL.messageModal('Import Successful',`Class "${googleCourseName}" has been imported with ${existingStudentUids.length} existing students and ${pendingEmails.length} pending emails!`,'green'));}catch(e){console.error("Error importing Google Classroom:",e);let errorMessage='Failed to import class. Please ensure Google Classroom API is enabled for your account.';if(e.result&&e.result.error){errorMessage=e.result.error.message||errorMessage;}else if(e.message){errorMessage=e.message;}showModal(TPL.messageModal('Import Failed',errorMessage,'red'));if(importBtn){importBtn.textContent='Import';importBtn.disabled=false;}}}
 
                 document.body.addEventListener('click', async e => {
                     const target = e.target.closest('button, a, [role="button"]');
@@ -910,7 +927,13 @@
                             if (tooltip) { tooltip.textContent = 'Copied!'; setTimeout(() => { tooltip.textContent = target.dataset.tooltipText; }, 2000); }
                         });
                     }
-                    if (target.matches('.period-btn')) {
+                    if (target.id === 'show-co-teacher-code-btn') {
+                        showModal(TPL.reauthenticateModal(currentClassId));
+                    }
+                    if (target.id === 'reauth-google-btn') {
+                        const classId = target.dataset.classId;
+                        reauthenticateUser(classId, 'google.com');
+                    }
                         const container = target.closest('.period-selector');
                         container.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('active'));
                         target.classList.add('active');
@@ -945,6 +968,31 @@
                     if(e.target.id === 'raise-hand-form') { const q = e.target.querySelector('#hand-raise-question').value.trim(); raiseHand(e.target.dataset.classId, q); }
                     if(e.target.id === 'change-class-name-form') { const newName = e.target.querySelector('#class-name-input').value.trim(); if (newName && currentClassId) handleChangeClassName(currentClassId, newName); }
                     if(e.target.id === 'request-co-teacher-form') { const comment = e.target.querySelector('#co-teacher-request-comment').value.trim(); requestCoTeacher(e.target.dataset.classId, comment); }
+                    if(e.target.id === 'reauth-password-form') {
+                        const classId = e.target.dataset.classId;
+                        const password = e.target.querySelector('#reauth-password').value;
+                        const reauthErrorMessage = document.getElementById('reauth-error-message');
+                        reauthErrorMessage.classList.add('hidden'); // Clear previous errors
+                        try {
+                            await reauthenticateWithPassword(password);
+                            hideModal();
+                            // Reveal the code
+                            document.getElementById('co-teacher-code-display').textContent = allLoadedClasses[classId].coTeacherCode;
+                            document.getElementById('show-co-teacher-code-btn').classList.add('hidden'); // Hide the button
+                            // Make it copyable
+                            const coTeacherCodeEl = document.getElementById('co-teacher-code-display');
+                            coTeacherCodeEl.classList.add('copy-code-btn', 'cursor-pointer', 'hover:bg-slate-200', 'transition');
+                            coTeacherCodeEl.setAttribute('role', 'button');
+                            coTeacherCodeEl.setAttribute('tabindex', '0');
+                            coTeacherCodeEl.dataset.classCode = allLoadedClasses[classId].coTeacherCode;
+                            coTeacherCodeEl.dataset.tooltipText = 'Copy Co-Teacher Code';
+                            showModal(TPL.messageModal('Success', 'Co-Teacher Code revealed!', 'green'));
+                        } catch (error) {
+                            console.error('Password reauthentication error:', error);
+                            reauthErrorMessage.textContent = error.message.includes('wrong-password') ? 'Incorrect password. Please try again.' : error.message;
+                            reauthErrorMessage.classList.remove('hidden');
+                        }
+                    }
                 });
 
                 const TPL = {
@@ -1007,7 +1055,7 @@
 
                         const teacherView = `
                             <div class="fade-enter-active space-y-6">
-                                <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                                <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-100">
                                     <div class="flex flex-wrap justify-between items-center gap-4">
                                         <h2 class="text-3xl font-bold text-gray-800 font-poppins">${escapeHtml(cls.name)}</h2>
                                         <div class="flex items-center space-x-2">
@@ -1036,19 +1084,19 @@
                                         if (view === 'settings' && isOwner) return `
                                             <div id="settings-panel" class="space-y-6 fade-enter-active">
                                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    <div class="bg-white p-6 rounded-2xl shadow-sm border space-y-4">
+                                                    <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-100 space-y-4">
                                                         <h3 class="text-xl font-bold text-gray-800 font-poppins">Invite Codes</h3>
                                                         <div class="space-y-3">
                                                             <div class="flex items-center justify-between"><p class="font-medium text-gray-600">Student Code:</p><div class="tooltip-container copy-code-btn" role="button" tabindex="0" data-class-code="${escapeHtml(cls.code)}" data-tooltip-text="Copy Student Code"><span class="font-poppins text-sm text-gray-500 bg-slate-100 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-slate-200 transition">${escapeHtml(cls.code)}</span><span class="tooltip-text">Copy Student Code</span></div></div>
-                                                            <div class="flex items-center justify-between"><p class="font-medium text-gray-600">Co-Teacher Code:</p><div class="tooltip-container copy-code-btn" role="button" tabindex="0" data-class-code="${escapeHtml(cls.coTeacherCode)}" data-tooltip-text="Copy Co-Teacher Code"><span class="font-poppins text-sm text-gray-500 bg-slate-100 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-slate-200 transition">${escapeHtml(cls.coTeacherCode)}</span><span class="tooltip-text">Copy Co-Teacher Code</span></div></div>
+                                                        <div class="flex items-center justify-between"><p class="font-medium text-gray-600">Co-Teacher Code:</p><div class="flex items-center space-x-2"><span id="co-teacher-code-display" class="font-poppins text-sm text-gray-500 bg-slate-100 px-3 py-1.5 rounded-lg">********</span><button id="show-co-teacher-code-btn" class="px-3 py-1.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 btn-bubbly text-sm">Show Code</button></div></div>
                                                         </div>
                                                     </div>
-                                                    <div class="bg-white p-6 rounded-2xl shadow-sm border space-y-4">
+                                                    <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-100 space-y-4">
                                                         <h3 class="text-xl font-bold text-gray-800 font-poppins">Class Name</h3>
                                                         <form id="change-class-name-form" class="space-y-2"><label for="class-name-input" class="block text-sm font-medium text-gray-600">Name</label><div class="flex items-center space-x-3"><input type="text" id="class-name-input" class="app-input flex-grow" value="${escapeHtml(cls.name)}"><button type="submit" class="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 btn-bubbly">Save</button></div><p class="text-xs text-gray-500">Changes left today: <span class="font-semibold">${nameChangesLeft()}</span></p></form>
                                                     </div>
                                                 </div>
-                                                <div class="bg-white p-6 rounded-2xl shadow-sm border space-y-4 relative">
+                                                <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-100 space-y-4 relative">
                                                     <div class="flex justify-between items-start">
                                                         <h3 class="text-xl font-bold text-gray-800 font-poppins">Scheduling</h3>
                                                         ${cls.schedule?.disableAt ? 
@@ -1075,14 +1123,14 @@
                                             </div>`;
                                         if (view === 'roster') return `
                                             <div id="roster-panel" class="space-y-6 fade-enter-active">
-                                                <div class="bg-white p-6 rounded-2xl shadow-sm border">
+                                                <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-100">
                                                     <h4 class="text-lg font-semibold text-gray-800 mb-4 font-poppins">Teachers</h4>
                                                     <ul class="space-y-3">
                                                         <li class="flex items-center justify-between p-2"><div class="flex items-center"><span class="font-semibold text-gray-800">${escapeHtml(roster?.owner?.username || '...')}</span><span class="ml-3 text-xs font-bold uppercase bg-purple-100 text-purple-700 px-2 py-1 rounded-full">Owner</span></div></li>
                                                         ${roster?.coTeachers?.map(t => `<li class="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50"><span class="font-semibold text-gray-700">${escapeHtml(t.username)}</span> ${isOwner ? `<button data-user-id="${t.id}" class="remove-user-btn text-xs text-red-500 hover:text-red-700 font-semibold">Remove</button>` : ''}</li>`).join('')}
                                                     </ul>
                                                 </div>
-                                                 <div class="bg-white p-6 rounded-2xl shadow-sm border">
+                                                 <div class="bg-white p-6 rounded-2xl shadow-md border border-gray-100">
                                                     <h4 class="text-lg font-semibold text-gray-800 mb-4 font-poppins">Students (${roster?.students?.length || 0})</h4>
                                                     <ul class="space-y-3 pr-2">
                                                         ${roster?.students?.length > 0 ? roster.students.map(s => `<li class="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50"><span class="text-gray-700">${escapeHtml(s.username)}</span> ${isOwner ? `<button data-user-id="${s.id}" class="remove-user-btn text-xs text-red-500 hover:text-red-700 font-semibold">Remove</button>` : ''}</li>`).join('') : '<p class="text-sm text-gray-500 p-2">No students have joined yet.</p>'}
@@ -1090,7 +1138,7 @@
                                                 </div>
                                             </div>`;
                                         if (view === 'requests' && isOwner) return `
-                                            <div id="requests-panel" class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 fade-enter-active">
+                                            <div id="requests-panel" class="bg-white p-6 rounded-2xl shadow-md border border-gray-100 fade-enter-active">
                                                 <h3 class="text-xl font-bold text-gray-800 font-poppins flex items-center"><i class="fa-solid fa-user-shield mr-3 text-violet-500"></i>Co-Teacher Requests <span class="ml-3 bg-violet-100 text-violet-800 text-sm font-semibold px-3 py-1 rounded-full">${pendingRequestCount}</span></h3>
                                                 <div id="requests-list" class="mt-5">${pendingRequestCount>0?`<ul class="space-y-3">${pendingRequests.map(req => `<li class="bg-slate-50 p-4 rounded-lg flex items-start justify-between transition hover:shadow-md"><div class="flex-1"><p class="font-semibold text-gray-800">${escapeHtml(req.requesterName)}</p>${req.comment?`<p class="text-sm text-gray-600 mt-1.5 italic">"${escapeHtml(req.comment)}"</p>`:''}<p class="text-xs text-gray-400 mt-2.5">Requested at: ${new Date(req.requestedAt?.toDate()).toLocaleString()}</p></div>
                                                     <div class="request-action-group">
@@ -1104,7 +1152,7 @@
                                                 </li>`).join('')}</ul>`:`<div class="text-center py-16"><i class="fa-solid fa-inbox fa-3x text-slate-300"></i><p class="mt-4 text-gray-500">No pending requests.</p></div>`}</div>
                                             </div>`;
                                         // Default to overview (now full width)
-                                        return `<div id="overview-panel" class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 fade-enter-active"><h3 class="text-xl font-bold text-gray-800 font-poppins flex items-center"><i class="fa-solid fa-stream mr-3 text-blue-500"></i>Raised Hands Queue <span class="ml-3 bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full">${queue.length}</span></h3><div id="hand-raise-queue" class="mt-5">${queue.length>0?`<ul class="space-y-3">${queue.map((hand, index) => `<li class="bg-slate-50 p-4 rounded-lg flex items-start justify-between transition hover:shadow-md"><div class="flex items-start"><div class="text-xl font-bold font-poppins text-blue-600 w-8 text-center pt-0.5">${index+1}</div><div class="ml-4"><p class="font-semibold text-gray-800">${escapeHtml(hand.studentName)}</p>${hand.question?`<p class="text-sm text-gray-600 mt-1.5 italic">"${escapeHtml(hand.question)}"</p>`:''}<p class="text-xs text-gray-400 mt-2.5">Raised at: ${new Date(hand.raisedAt?.toDate()).toLocaleTimeString()}</p></div></div>
+                                        return `<div id="overview-panel" class="bg-white p-6 rounded-2xl shadow-md border border-gray-100 fade-enter-active"><h3 class="text-xl font-bold text-gray-800 font-poppins flex items-center"><i class="fa-solid fa-stream mr-3 text-blue-500"></i>Raised Hands Queue <span class="ml-3 bg-blue-100 text-blue-800 text-sm font-semibold px-3 py-1 rounded-full">${queue.length}</span></h3><div id="hand-raise-queue" class="mt-5">${queue.length>0?`<ul class="space-y-3">${queue.map((hand, index) => `<li class="bg-slate-50 p-4 rounded-lg flex items-start justify-between transition hover:shadow-md"><div class="flex items-start"><div class="text-xl font-bold font-poppins text-blue-600 w-8 text-center pt-0.5">${index+1}</div><div class="ml-4"><p class="font-semibold text-gray-800">${escapeHtml(hand.studentName)}</p>${hand.question?`<p class="text-sm text-gray-600 mt-1.5 italic">"${escapeHtml(hand.question)}"</p>`:''}<p class="text-xs text-gray-400 mt-2.5">Raised at: ${new Date(hand.raisedAt?.toDate()).toLocaleTimeString()}</p></div></div>
                                                     <div class="request-action-group">
                                                         <button data-student-id="${hand.id}" data-action="accept-hand" class="queue-action-btn bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 btn-bubbly"><i class="fa-solid fa-check mr-1"></i> Accept</button>
                                                         <div class="comment-split-btn">
@@ -1118,7 +1166,8 @@
                                 }</div>
                             </div>
                         `;
-                        const studentView = `<div class="fade-enter-active space-y-6"><div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200"><h2 class="text-2xl font-bold font-poppins text-gray-800">${escapeHtml(cls.name)}</h2><p class="text-sm text-gray-500 mt-1">Welcome! Raise your hand below if you have a question.</p></div><div class="bg-white p-8 rounded-xl shadow-sm border border-gray-200 text-center hand-status-card">${(()=>{
+                                                const studentView = `<div class="fade-enter-active space-y-6">
+                                                    <div class="bg-white p-5 rounded-xl shadow-md border border-gray-100"><h2 class="text-2xl font-bold font-poppins text-gray-800">${escapeHtml(cls.name)}</h2><p class="text-sm text-gray-500 mt-1">Welcome! Raise your hand below if you have a question.</p></div><div id="student-hand-status" class="bg-white p-6 rounded-xl shadow-md border border-gray-100 text-center hand-status-card">${(()=>{
                             const effectiveEnabled = getEffectiveHandRaisingStatus(cls, false).enabled;
                             const statusMessage = getEffectiveHandRaisingStatus(cls, false).message;
 
@@ -1177,8 +1226,110 @@
                     googleImportModal:()=>`<div class="relative bg-white w-full max-w-lg p-6 rounded-xl shadow-xl pointer-events-auto"><div class="flex items-center justify-center mb-4"><img src="../images/google-classroom.png" alt="Google Classroom icon" class="h-10 w-10 mr-4"><h3 class="text-2xl font-bold font-poppins text-gray-800">Import from Classroom</h3></div><p class="text-center text-gray-500 mb-6">Select a class you own to import it into Notify.</p><div id="g-import-content"><div id="g-import-loading" class="text-center py-8"><i class="fa-solid fa-spinner fa-spin fa-2x text-blue-600 mb-2"></i><p class="text-gray-600">Connecting to Google Classroom...</p></div><p id="g-import-error" class="text-center text-red-600 bg-red-50 p-3 rounded-md hidden"></p><ul id="g-import-list" class="mt-4 max-h-80 overflow-y-auto space-y-2 custom-scrollbar"></ul></div><div class="flex justify-center mt-6"><button type="button" class="modal-cancel-btn px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 btn-bubbly">Close</button></div></div>`,
                     raiseHandModal:(id)=>`<div class="relative bg-white w-full max-w-md p-6 rounded-xl shadow-xl pointer-events-auto"><h3 class="text-xl font-semibold font-poppins text-gray-800">Raise Your Hand</h3><form id="raise-hand-form" data-class-id="${id}" class="mt-4 space-y-4"><div><label for="hand-raise-question" class="block text-sm font-medium text-gray-700">Ask a question (optional)</label><textarea id="hand-raise-question" rows="3" class="mt-1 block w-full app-input" placeholder="Type your question here..."></textarea></div><div class="flex justify-end space-x-3"><button type="button" class="modal-cancel-btn px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 btn-bubbly">Cancel</button><button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 btn-bubbly">Confirm Raise Hand</button></div></form></div>`,
                     deleteClassConfirmModal:(id,name)=>`<div class="relative bg-white w-full max-w-md p-6 rounded-xl shadow-xl pointer-events-auto"><div class="text-center"><i class="fa-solid fa-triangle-exclamation fa-3x text-red-500 mb-4"></i><h3 class="text-xl font-semibold font-poppins text-gray-800">Delete Class</h3></div><p class="mt-4 text-gray-600 text-center">Are you sure you want to permanently delete <strong>${escapeHtml(name)}</strong>? This action cannot be undone.</p><div class="mt-6 flex justify-end space-x-3"><button class="modal-cancel-btn px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 btn-bubbly">Cancel</button><button id="confirm-delete-class-btn" data-class-id="${id}" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 btn-bubbly">Confirm Delete</button></div></div>`,
+                    reauthenticateModal: (classId) => {
+                        const isGoogleUser = currentUser.providerData.some(p => p.providerId === 'google.com');
+                        const isPasswordUser = currentUser.providerData.some(p => p.providerId === 'password');
+                        return `<div class="relative bg-white w-full max-w-md p-6 rounded-xl shadow-xl pointer-events-auto">
+                            <h3 class="text-xl font-semibold font-poppins text-gray-800 text-center">Reauthenticate to View Code</h3>
+                            <p class="text-gray-600 text-center mt-2">Please re-enter your credentials to securely view the co-teacher code.</p>
+                            <div class="mt-6 space-y-4">
+                                ${isGoogleUser ? `
+                                    <button id="reauth-google-btn" data-class-id="${classId}" class="w-full flex items-center justify-center space-x-3 px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors btn-bubbly">
+                                        <img src="images/google-icon.png" alt="Google icon" class="h-5 w-5">
+                                        <span>Reauthenticate with Google</span>
+                                    </button>
+                                ` : ''}
+                                ${isPasswordUser ? `
+                                    <form id="reauth-password-form" data-class-id="${classId}" class="space-y-4">
+                                        <div>
+                                            <label for="reauth-email" class="block text-sm font-medium text-gray-700">Email</label>
+                                            <input type="email" id="reauth-email" class="mt-1 block w-full app-input" value="${currentUser.email}" readonly>
+                                        </div>
+                                        <div>
+                                            <label for="reauth-password" class="block text-sm font-medium text-gray-700">Password</label>
+                                            <input type="password" id="reauth-password" class="mt-1 block w-full app-input" required>
+                                        </div>
+                                        <button type="submit" class="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors btn-bubbly">Reauthenticate with Password</button>
+                                    </form>
+                                ` : ''}
+                                ${!isGoogleUser && !isPasswordUser ? `<p class="text-center text-red-500">No supported authentication method found.</p>` : ''}
+                            </div>
+                            <div class="mt-6 text-center">
+                                <button type="button" class="modal-cancel-btn text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+                            </div>
+                            <p id="reauth-error-message" class="text-red-500 text-center text-sm mt-4 hidden"></p>
+                        </div>`
+                    }
+                };
                 };
                 
+                async function reauthenticateUser(classId, provider) {
+                    const reauthErrorMessage = document.getElementById('reauth-error-message');
+                    reauthErrorMessage.classList.add('hidden'); // Clear previous errors
+                    try {
+                        let result;
+                        if (provider === 'google.com') {
+                            result = await reauthenticateWithGoogle();
+                        } else if (provider === 'password') {
+                            // Password reauthentication is handled by the form submit
+                            return; 
+                        } else {
+                            throw new Error('Unsupported reauthentication provider.');
+                        }
+                        
+                        if (result) {
+                            hideModal();
+                            // Reveal the code
+                            document.getElementById('co-teacher-code-display').textContent = allLoadedClasses[classId].coTeacherCode;
+                            document.getElementById('show-co-teacher-code-btn').classList.add('hidden'); // Hide the button
+                            // Make it copyable
+                            const coTeacherCodeEl = document.getElementById('co-teacher-code-display');
+                            coTeacherCodeEl.classList.add('copy-code-btn', 'cursor-pointer', 'hover:bg-slate-200', 'transition');
+                            coTeacherCodeEl.setAttribute('role', 'button');
+                            coTeacherCodeEl.setAttribute('tabindex', '0');
+                            coTeacherCodeEl.dataset.classCode = allLoadedClasses[classId].coTeacherCode;
+                            coTeacherCodeEl.dataset.tooltipText = 'Copy Co-Teacher Code';
+                            showModal(TPL.messageModal('Success', 'Co-Teacher Code revealed!', 'green'));
+                        }
+                    } catch (error) {
+                        console.error('Reauthentication error:', error);
+                        reauthErrorMessage.textContent = error.message;
+                        reauthErrorMessage.classList.remove('hidden');
+                    }
+                }
+
+                async function reauthenticateWithGoogle() {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    try {
+                        await currentUser.reauthenticateWithPopup(provider);
+                        return true;
+                    } catch (error) {
+                        if (error.code === 'auth/popup-closed-by-user') {
+                            throw new Error('Google sign-in popup was closed. Please try again.');
+                        }
+                        if (error.code === 'auth/cancelled-popup-request') {
+                            throw new Error('Google sign-in popup was already open. Please try again.');
+                        }
+                        throw new Error(`Google reauthentication failed: ${error.message}`);
+                    }
+                }
+
+                async function reauthenticateWithPassword(password) {
+                    const credential = firebase.auth.EmailAuthProvider.credential(currentUser.email, password);
+                    try {
+                        await currentUser.reauthenticateWithCredential(credential);
+                        return true;
+                    } catch (error) {
+                        if (error.code === 'auth/wrong-password') {
+                            throw new Error('Incorrect password. Please try again.');
+                        }
+                        if (error.code === 'auth/user-mismatch') {
+                            throw new Error('User mismatch. Please log in again.');
+                        }
+                        throw new Error(`Password reauthentication failed: ${error.message}`);
+                    }
+                }
+
                 document.body.addEventListener('mainContentRendered', () => {
                     const timeInputs = document.querySelectorAll('.schedule-time-input');
                     timeInputs.forEach(input => {

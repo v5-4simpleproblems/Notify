@@ -125,6 +125,10 @@
                 const db = firebase.firestore();
                 let currentUser = null;
 
+                function getNotifyCollectionRef(collectionName) {
+                    return db.collection('Notify_data').collection(collectionName);
+                }
+
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         currentUser = user;
@@ -153,7 +157,7 @@
                         await currentUser.updateProfile({
                             displayName: newUsername
                         });
-                        await db.collection('users').doc(currentUser.uid).update({ username: newUsername });
+                        await getNotifyCollectionRef('users').doc(currentUser.uid).update({ username: newUsername });
                         displayMessage(successMsg, 'Username updated successfully!');
                     } catch (error) {
                         console.error("Error updating username:", error);
@@ -197,25 +201,24 @@
 
                     if (confirm("Are you sure you want to delete your account? This action is permanent and cannot be undone.")) {
                         try {
-                            // Find and delete all user-related data
-                            await db.runTransaction(async t => {
-                                const userDocRef = db.collection('users').doc(currentUser.uid);
-                                t.delete(userDocRef);
+                                                            // Find and delete all user-related data
+                                                            await db.runTransaction(async t => {
+                                                                const userDocRef = getNotifyCollectionRef('users').doc(currentUser.uid);                                t.delete(userDocRef);
                                 
                                 // Find and delete username entry
-                                const usernameQuery = await db.collection('usernames').where('uid', '==', currentUser.uid).get();
+                                const usernameQuery = await getNotifyCollectionRef('usernames').where('uid', '==', currentUser.uid).get();
                                 if (!usernameQuery.empty) {
                                     t.delete(usernameQuery.docs[0].ref);
                                 }
                                 
                                 // Remove user from all classes
-                                const classesQuery = await db.collection('classes').where('studentIds', 'array-contains', currentUser.uid).get();
+                                const classesQuery = await getNotifyCollectionRef('classes').where('studentIds', 'array-contains', currentUser.uid).get();
                                 classesQuery.forEach(doc => {
                                     t.update(doc.ref, { studentIds: firebase.firestore.FieldValue.arrayRemove(currentUser.uid) });
                                 });
                                 
                                 // Delete all classes where user is the sole teacher/owner
-                                const teacherClassesQuery = await db.collection('classes').where('teacherId', '==', currentUser.uid).get();
+                                const teacherClassesQuery = await getNotifyCollectionRef('classes').where('teacherId', '==', currentUser.uid).get();
                                 teacherClassesQuery.forEach(doc => {
                                     t.delete(doc.ref);
                                 });
